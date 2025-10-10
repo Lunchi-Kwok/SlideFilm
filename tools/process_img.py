@@ -6,17 +6,15 @@ import openslide
 def build_pyramid_keep_original(
     input_path: str,
     output_path: str,
-    base_mpp: float = 0.27,   # 原图 level-0 的 MPP（µm/px）
+    base_mpp: float = 0.27,
     tile: int = 256,
     jpeg_quality: int = 90
 ):
-    """把单个 TIFF/OME-TIFF 转成金字塔 BigTIFF，level-0=原始分辨率。"""
+
     img = pyvips.Image.new_from_file(input_path, access="sequential")
 
-    # 分辨率（英寸基准）：xres = yres = 25400 / (µm/px)
     xres = 25400.0 / float(base_mpp)
 
-    # 保存为金字塔（OpenSlide 友好）
     img.tiffsave(
         str(output_path),
         tile=True, pyramid=True, bigtiff=True,
@@ -33,12 +31,10 @@ def process_folder(
     jpeg_quality: int = 90,
     overwrite: bool = False
 ):
-    """批量处理 input_dir 下所有 .tif/.tiff，输出到 output_dir。"""
     in_root = Path(input_dir)
     out_root = Path(output_dir)
     out_root.mkdir(parents=True, exist_ok=True)
 
-    # 支持大小写后缀
     exts = {".tif", ".tiff", ".TIF", ".TIFF"}
 
     files = [p for p in in_root.rglob("*") if p.suffix in exts]
@@ -48,12 +44,10 @@ def process_folder(
 
     print(f"[INFO] Found {len(files)} file(s). Start converting...")
     for i, src in enumerate(files, 1):
-        # 在输出目录保留相对层级结构
         rel = src.relative_to(in_root)
         dst = out_root / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # 确保输出后缀是 .tif（可根据需要保留原后缀）
         dst = dst.with_suffix(".tif")
 
         if dst.exists() and not overwrite:
@@ -70,7 +64,6 @@ def process_folder(
                 jpeg_quality=jpeg_quality
             )
 
-            # 简单校验：打印层级与尺寸
             slide = openslide.OpenSlide(str(dst))
             downsamples = [float(d) for d in slide.level_downsamples]
             dims = slide.level_dimensions

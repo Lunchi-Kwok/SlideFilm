@@ -85,7 +85,6 @@ def process_folder_masks(
                 tile=tile
             )
 
-            # 简单校验
             slide = openslide.OpenSlide(str(dst))
             downsamples = [float(d) for d in slide.level_downsamples]
             dims = slide.level_dimensions
