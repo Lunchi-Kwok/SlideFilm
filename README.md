@@ -11,9 +11,7 @@ You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeD
 
 1. **Use supported WSIs**
    - Ensure your WSIs can be read by `openslide`.
-   - If the format is not supported, use  
-     [process_img.py](tools/process_img.py) and [process_mask](tools/process_mask.py)  
-     to convert them into formats compatible with `prov-gigapath`.
+   - If the format is not supported, use  [process_img.py](tools/process_img.py) and [process_mask](tools/process_mask.py) to convert them into formats compatible with `prov-gigapath`.
 
 2. **Determine appropriate level**
    - Select the correct WSI level based on your dataset’s **micron-per-pixel (MPP)** value.
@@ -30,24 +28,16 @@ You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeD
 
 ## 🚀 2. Inference
 
-To directly test a trained model, run:
-
-[inference.py](inference.py)
+To directly test a trained model, run: [inference.py](inference.py)
 
 ## 🧠 3. Training from Scratch
 
-If you want to train the segmentation model from the beginning, run: 
-
-[main.py](main.py)
+If you want to train the segmentation model from the beginning, run: [main.py](main.py)
 
 ## 🔧 4. Fine-tuning a Pretrained Model
 
-If you have a pretrained model and want to fine-tune it on a new dataset, run:
-
-[finetune.py](finetune.py)
+If you have a pretrained model and want to fine-tune it on a new dataset, run: [finetune.py](finetune.py)
 
 ## 🧩 5. Stitching Tile-Level Predictions
 
-After inference, use the following command to merge all tile-level predictions back into full-resolution WSIs:
-
-[stitches.py](tools/stitches.py)
+After inference, use the following command to merge all tile-level predictions back into full-resolution WSIs: [stitches.py](tools/stitches.py)
