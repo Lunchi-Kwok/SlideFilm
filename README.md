@@ -12,7 +12,7 @@ You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeD
 1. **Use supported WSIs**
    - Ensure your WSIs can be read by `openslide`.
    - If the format is not supported, use  
-     [`process_img.py](tools/process_img.py) and [process_mask`](tools/process_mask.py)  
+     [process_img.py](tools/process_img.py) and [process_mask](tools/process_mask.py)  
      to convert them into formats compatible with `prov-gigapath`.
 
 2. **Determine appropriate level**
@@ -50,4 +50,4 @@ If you have a pretrained model and want to fine-tune it on a new dataset, run:
 
 After inference, use the following command to merge all tile-level predictions back into full-resolution WSIs:
 
-[tools/stitches.py](tools/stitches.py)
+[stitches.py](tools/stitches.py)
