@@ -18,7 +18,7 @@ import numpy as np
 import torch.nn.functional as F
 
 # 1) load model
-os.environ["HF_TOKEN"] = "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"
+os.environ["HF_TOKEN"] = ""
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 tile_encoder, slide_encoder = load_tile_slide_encoder(global_pool=True)

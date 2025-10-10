@@ -16,7 +16,7 @@ import torch.nn as nn
 
 def main():
     device = "cuda"
-    os.environ["HF_TOKEN"] = "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"
+    os.environ["HF_TOKEN"] = ""
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--epochs", type=int, required=True)
