@@ -10,14 +10,14 @@ You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeD
 ## 📂 1. Preparing Datasets
 
 1. **Use supported WSIs**
-   - Ensure your WSIs can be read by `openslide`.
+   - Ensure your WSIs and masks can be read by `openslide`.
    - If the format is not supported, use  [process_img.py](tools/process_img.py) and [process_mask](tools/process_mask.py) to convert them into formats compatible with `prov-gigapath`.
 
 2. **Determine appropriate level**
    - Select the correct WSI level based on your dataset’s **micron-per-pixel (MPP)** value.
 
 3. **Break WSIs into tiles**
-   - Breaking WSIs into tiles, check out the [notebook](demo/run_gigapath.ipynb)
+   - Breaking WSIs and masks into tiles, check out the [notebook](demo/run_gigapath.ipynb)
 
 4. **Align images and masks**
    - Run [imgmask_same.py](tools/imgmask_same.py) to ensure the `img` and `mask` folders contain **the same number of files** with **identical names**.
