@@ -104,6 +104,6 @@ def stitch_tiles(input_path, output_prefix="stitched"):
 if __name__ == "__main__":
     stitch_tiles(
         r"E:\prov-gigapath_seg\out\preprocessing\output\mask_plaqueImage13_1200_1200",
-        output_prefix="stitched_result_test"
+        output_prefix="stitched_result"
     )
 
