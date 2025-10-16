@@ -17,7 +17,7 @@ You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeD
    - Select the correct WSI level based on your dataset’s **micron-per-pixel (MPP)** value.
 
 3. **Break WSIs into tiles**
-   - Breaking WSIs into tiles
+   - Breaking WSIs into tiles, check out the [notebook](demo/run_gigapath.ipynb)
 
 4. **Align images and masks**
    - Run [imgmask_same.py](tools/imgmask_same.py) to ensure the `img` and `mask` folders contain **the same number of files** with **identical names**.
