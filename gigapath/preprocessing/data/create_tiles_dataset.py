@@ -39,7 +39,8 @@ def select_tiles(foreground_mask: np.ndarray, occupancy_threshold: float) \
     if occupancy_threshold < 0. or occupancy_threshold > 1.:
         raise ValueError("Tile occupancy threshold must be between 0 and 1")
     occupancy = foreground_mask.mean(axis=(-2, -1), dtype=np.float16)
-    return (occupancy > occupancy_threshold).squeeze(), occupancy.squeeze()  # type: ignore
+    return np.ones_like(occupancy, dtype=bool), occupancy.squeeze()
+    # return (occupancy > occupancy_threshold).squeeze(), occupancy.squeeze()  # type: ignore
 
 
 def get_tile_descriptor(tile_location: Sequence[int]) -> str:
@@ -102,13 +103,13 @@ def generate_tiles(slide_image: np.ndarray, tile_size: int, foreground_threshold
     foreground_mask, _ = segment_foreground(image_tiles, foreground_threshold)
     selected, occupancies = select_tiles(foreground_mask, occupancy_threshold)
     n_discarded = (~selected).sum()
-    logging.info(f"Percentage tiles discarded: {n_discarded / len(selected) * 100:.2f}")
+    # logging.info(f"Percentage tiles discarded: {n_discarded / len(selected) * 100:.2f}")
 
     # FIXME: this uses too much memory
     # empty_tile_bool_mask = check_empty_tiles(image_tiles)
     # selected = selected & (~empty_tile_bool_mask)
     # n_discarded = (~selected).sum()
-    # logging.info(f"Percentage tiles discarded after filtering empty tiles: {n_discarded / len(selected) * 100:.2f}")
+    logging.info(f"Percentage tiles discarded after filtering empty tiles: {n_discarded / len(selected) * 100:.2f}")
 
     # logging.info(f"Before filtering: min y: {tile_locations[:, 0].min()}, max y: {tile_locations[:, 0].max()}, min x: {tile_locations[:, 1].min()}, max x: {tile_locations[:, 1].max()}")
 
@@ -296,6 +297,8 @@ def process_slide(sample: Dict["SlideKey", Any], level: int, margin: int, tile_s
         loader = LoadROId(WSIReader(backend="OpenSlide"), level=level, margin=margin,
                           foreground_threshold=foreground_threshold)
         sample = loader(sample)  # load 'image' from disk
+        print(sample["origin"])
+        sample["origin"] = np.array([0, 0])
 
         # Save ROI thumbnail
         slide_image = sample["image"]
@@ -317,7 +320,6 @@ def process_slide(sample: Dict["SlideKey", Any], level: int, margin: int, tile_s
         tile_locations = (sample["scale"] * rel_tile_locations
                             + sample["origin"]).astype(int)  # noqa: W503
 
-        print(sample["origin"])
 
         n_tiles = image_tiles.shape[0]
         logging.info(f"{n_tiles} tiles found")

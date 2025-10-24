@@ -39,10 +39,13 @@ def segment_foreground(slide: np.ndarray, threshold: Optional[float] = None) \
     If `None` (default), an optimal threshold will be estimated automatically using Otsu's method.
     :return: A tuple containing the boolean output array in (*, H, W) format and the threshold used.
     """
+    # H, W = slide.shape[-2:]
+    # foreground_mask = np.ones((H, W), dtype=bool)
     luminance = get_luminance(slide)
     if threshold is None:
         threshold = skimage.filters.threshold_otsu(luminance)
     logging.info(f"Otsu threshold from luminance: {threshold}")
+    # return foreground_mask, threshold
     return luminance < threshold, threshold
 
 
