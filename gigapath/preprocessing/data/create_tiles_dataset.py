@@ -124,6 +124,44 @@ def generate_tiles(slide_image: np.ndarray, tile_size: int, foreground_threshold
 
     return image_tiles, tile_locations, occupancies, n_discarded
 
+def generate_mask_tiles(slide_image: np.ndarray, tile_size: int, foreground_threshold: float,
+                   occupancy_threshold: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Split the foreground of an input slide image into tiles.
+
+    :param slide_image: The RGB image array in (C, H, W) format.
+    :param tile_size: Lateral dimensions of each tile, in pixels.
+    :param foreground_threshold: Luminance threshold (0 to 255) to determine tile occupancy.
+    :param occupancy_threshold: Threshold (between 0 and 1) to determine empty tiles to discard.
+    :return: A tuple containing the image tiles (N, C, H, W), tile coordinates (N, 2), occupancies
+    (N,), and total number of discarded empty tiles.
+    """
+    image_tiles, tile_locations = tiling.tile_array_2d(slide_image, tile_size=tile_size,
+                                                       constant_values=0)
+    logging.info(f"image_tiles.shape: {image_tiles.shape}, dtype: {image_tiles.dtype}")
+    logging.info(f"Tiled {slide_image.shape} to {image_tiles.shape}")
+    foreground_mask, _ = segment_foreground(image_tiles, foreground_threshold)
+    selected, occupancies = select_tiles(foreground_mask, occupancy_threshold)
+    n_discarded = (~selected).sum()
+    # logging.info(f"Percentage tiles discarded: {n_discarded / len(selected) * 100:.2f}")
+
+    # FIXME: this uses too much memory
+    # empty_tile_bool_mask = check_empty_tiles(image_tiles)
+    # selected = selected & (~empty_tile_bool_mask)
+    # n_discarded = (~selected).sum()
+    logging.info(f"Percentage tiles discarded after filtering empty tiles: {n_discarded / len(selected) * 100:.2f}")
+
+    # logging.info(f"Before filtering: min y: {tile_locations[:, 0].min()}, max y: {tile_locations[:, 0].max()}, min x: {tile_locations[:, 1].min()}, max x: {tile_locations[:, 1].max()}")
+
+    image_tiles = image_tiles[selected]
+    tile_locations = tile_locations[selected]
+    occupancies = occupancies[selected]
+
+    if len(tile_locations) == 0:
+        logging.warn("No tiles selected")
+    else:
+        logging.info(f"After filtering: min y: {tile_locations[:, 0].min()}, max y: {tile_locations[:, 0].max()}, min x: {tile_locations[:, 1].min()}, max x: {tile_locations[:, 1].max()}")
+
+    return image_tiles, tile_locations, occupancies, n_discarded
 
 def get_tile_info(sample: Dict["SlideKey", Any], occupancy: float, tile_location: Sequence[int],
                   rel_slide_dir: Path) -> Dict["TileKey", Any]:
@@ -357,6 +395,127 @@ def process_slide(sample: Dict["SlideKey", Any], level: int, margin: int, tile_s
 
         return output_tiles_dir
 
+def process_mask_slide(sample: Dict["SlideKey", Any], level: int, margin: int, tile_size: int,
+                  foreground_threshold: Optional[float], occupancy_threshold: float, output_dir: Path,
+                  thumbnail_dir: Path,
+                  tile_progress: bool = False) -> str:
+    """Load and process a slide, saving tile images and information to a CSV file.
+
+    :param sample: Slide information dictionary, returned by the input slide dataset.
+    :param level: Magnification level at which to process the slide.
+    :param margin: Margin around the foreground bounding box, in pixels at lowest resolution.
+    :param tile_size: Lateral dimensions of each tile, in pixels.
+    :param foreground_threshold: Luminance threshold (0 to 255) to determine tile occupancy.
+    If `None` (default), an optimal threshold will be estimated automatically.
+    :param occupancy_threshold: Threshold (between 0 and 1) to determine empty tiles to discard.
+    :param output_dir: Root directory for the output dataset; outputs for a single slide will be
+    saved inside `output_dir/slide_id/`.
+    :param tile_progress: Whether to display a progress bar in the terminal.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    thumbnail_dir.mkdir(parents=True, exist_ok=True)
+    slide_metadata: Dict[str, Any] = sample["metadata"]
+    keys_to_save = ("slide_id", "tile_id", "image", "label",
+                    "tile_x", "tile_y", "occupancy")
+    metadata_keys = tuple("slide_" + key for key in slide_metadata)
+    csv_columns: Tuple[str, ...] = (*keys_to_save, *metadata_keys)
+    print(csv_columns)
+    slide_id: str = sample["slide_id"]
+    rel_slide_dir = Path(slide_id)
+    output_tiles_dir = output_dir / rel_slide_dir
+    logging.info(f">>> Slide dir {output_tiles_dir}")
+    if is_already_processed(output_tiles_dir):
+        logging.info(f">>> Skipping {output_tiles_dir} - already processed")
+        return output_tiles_dir
+
+    else:
+        output_tiles_dir.mkdir(parents=True, exist_ok=True)
+        dataset_csv_path = output_tiles_dir / "dataset.csv"
+        dataset_csv_file = dataset_csv_path.open('w')
+        dataset_csv_file.write(','.join(csv_columns) + '\n')  # write CSV header
+
+        n_failed_tiles = 0
+        failed_tiles_csv_path = output_tiles_dir / "failed_tiles.csv"
+        failed_tiles_file = failed_tiles_csv_path.open('w')
+        failed_tiles_file.write('tile_id' + '\n')
+
+        slide_image_path = Path(sample["image"])
+        logging.info(f"Loading slide {slide_id} ...\nFile: {slide_image_path}")
+
+        # Somehow it's very slow on Datarbicks
+        # hack: copy the slide file to a temporary directory
+        tmp_dir = tempfile.TemporaryDirectory()
+        tmp_slide_image_path = Path(tmp_dir.name) / slide_image_path.name
+        logging.info(f">>> Copying {slide_image_path} to {tmp_slide_image_path}")
+        shutil.copy(slide_image_path, tmp_slide_image_path)
+        sample["image"] = tmp_slide_image_path
+        logging.info(f">>> Finished copying {slide_image_path} to {tmp_slide_image_path}")
+
+        # Save original slide thumbnail
+        save_thumbnail(slide_image_path, thumbnail_dir / (slide_image_path.name + "_original.png"))
+
+        loader = LoadROId(WSIReader(backend="OpenSlide"), level=level, margin=margin,
+                          foreground_threshold=foreground_threshold)
+        sample = loader(sample)  # load 'image' from disk
+        print(sample["origin"])
+        sample["origin"] = np.array([0, 0])
+
+        # Save ROI thumbnail
+        slide_image = sample["image"]
+        plt.figure()
+        plt.imshow(slide_image.transpose(1, 2, 0))
+        plt.savefig(thumbnail_dir / (slide_image_path.name + "_roi.png"))
+        plt.close()
+        logging.info(f"Saving thumbnail {thumbnail_dir / (slide_image_path.name + '_roi.png')}, shape {slide_image.shape}")
+
+        logging.info(f"Tiling slide {slide_id} ...")
+        image_tiles, rel_tile_locations, occupancies, _ = \
+            generate_mask_tiles(sample["image"], tile_size,
+                            sample["foreground_threshold"],
+                            occupancy_threshold)
+
+        # origin in level-0 coordinate
+        # location in the current level coordiante
+        # tile_locations in level-0 coordinate
+        tile_locations = (sample["scale"] * rel_tile_locations
+                            + sample["origin"]).astype(int)  # noqa: W503
+
+
+        n_tiles = image_tiles.shape[0]
+        logging.info(f"{n_tiles} tiles found")
+
+        tile_info_list = []
+
+        logging.info(f"Saving tiles for slide {slide_id} ...")
+        for i in tqdm(range(n_tiles), f"Tiles ({slide_id[:6]}…)", unit="img", disable=not tile_progress):
+            try:
+                tile_info = get_tile_info(sample, occupancies[i], tile_locations[i], rel_slide_dir)
+                tile_info_list.append(tile_info)
+
+                save_image(image_tiles[i], output_dir / tile_info["image"])
+                dataset_row = format_csv_row(tile_info, keys_to_save, metadata_keys)
+                dataset_csv_file.write(dataset_row + '\n')
+            except Exception as e:
+                n_failed_tiles += 1
+                descriptor = get_tile_descriptor(tile_locations[i])
+                failed_tiles_file.write(descriptor + '\n')
+                traceback.print_exc()
+                warnings.warn(f"An error occurred while saving tile "
+                                f"{get_tile_id(slide_id, tile_locations[i])}: {e}")
+
+        dataset_csv_file.close()
+        failed_tiles_file.close()
+
+        # tile location overlay
+        visualize_tile_locations(sample, thumbnail_dir / (slide_image_path.name + "_roi_tiles.png"), tile_info_list, tile_size, origin_offset=sample["origin"])
+
+        if n_failed_tiles > 0:
+            # TODO what we want to do with slides that have some failed tiles?
+            logging.warning(f"{slide_id} is incomplete. {n_failed_tiles} tiles failed.")
+
+        logging.info(f"Finished processing slide {slide_id}")
+
+        return output_tiles_dir
 
 def merge_dataset_csv_files(dataset_dir: Path) -> Path:
     """Combines all "*/dataset.csv" files into a single "dataset.csv" file in the given directory."""

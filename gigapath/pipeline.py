@@ -15,7 +15,7 @@ from pathlib import Path
 from torchvision import transforms
 from typing import List, Tuple, Union
 from torch.utils.data import Dataset, DataLoader
-from gigapath.preprocessing.data.create_tiles_dataset import process_slide
+from gigapath.preprocessing.data.create_tiles_dataset import process_slide, process_mask_slide
 import torchvision.transforms.functional as TF
 import random
 
@@ -115,6 +115,58 @@ def tile_one_slide(slide_file: str = '', save_dir: str = '', level: int = 0, til
     print(f"Processing slide {slide_file} at level {level} with tile size {tile_size}. Saving to {save_dir}.")
 
     slide_dir = process_slide(
+        slide_sample,
+        level=level,
+        margin=0,
+        tile_size=tile_size,
+        foreground_threshold=256,
+        occupancy_threshold=0,
+        output_dir=save_dir / "output",
+        thumbnail_dir=save_dir / "thumbnails",
+        tile_progress=True,
+    )
+
+    dataset_csv_path = slide_dir / "dataset.csv"
+    dataset_df = pd.read_csv(dataset_csv_path)
+    assert len(dataset_df) > 0
+    failed_csv_path = slide_dir / "failed_tiles.csv"
+    failed_df = pd.read_csv(failed_csv_path)
+    assert len(failed_df) == 0
+
+    print(f"Slide {slide_file} has been tiled. {len(dataset_df)} tiles saved to {slide_dir}.")
+
+def tile_one_slide_mask(slide_file: str = '', save_dir: str = '', level: int = 0, tile_size: int = 256, img_size : str = '1000_1000'):
+    """
+    This function is used to tile a single slide and save the tiles to a directory.
+    -------------------------------------------------------------------------------
+    Warnings: pixman 0.38 has a known bug, which produces partial broken images.
+    Make sure to use a different version of pixman.
+    -------------------------------------------------------------------------------
+
+    Arguments:
+    ----------
+    slide_file : str
+        The path to the slide file.
+    save_dir : str
+        The directory to save the tiles.
+    level : int
+        The magnification level to use for tiling. level=0 is the highest magnification level.
+    tile_size : int
+        The size of the tiles.
+    """
+    slide_id = os.path.splitext(os.path.basename(slide_file))[0]
+    slide_id = f"{slide_id}_{img_size}"
+
+    # slide_sample = {"image": slide_file, "slide_id": slide_id, "metadata": {'TP53': 1, 'Diagnosis': 'Lung Cancer'}}
+    slide_sample = {"image": slide_file, "slide_id": slide_id, "metadata": {}}
+
+    save_dir = Path(save_dir)
+    if save_dir.exists():
+        print(f"Warning: Directory {save_dir} already exists. ")
+
+    print(f"Processing slide {slide_file} at level {level} with tile size {tile_size}. Saving to {save_dir}.")
+
+    slide_dir = process_mask_slide(
         slide_sample,
         level=level,
         margin=0,
