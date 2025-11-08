@@ -65,7 +65,7 @@ def main():
     os.makedirs(out_root, exist_ok=True)
     img_files = sorted(os.listdir(slide_dir_val))
 
-    raw_tile_resolution = 256 * (args.level + 1)
+    raw_tile_resolution = 256 * (2**(args.level + 1))
     img_size = (raw_tile_resolution, raw_tile_resolution)
 
     paired_transform, img_post, mask_post = build_paired_transforms()
