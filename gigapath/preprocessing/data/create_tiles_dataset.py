@@ -97,7 +97,7 @@ def generate_tiles(slide_image: np.ndarray, tile_size: int, foreground_threshold
     (N,), and total number of discarded empty tiles.
     """
     image_tiles, tile_locations = tiling.tile_array_2d(slide_image, tile_size=tile_size,
-                                                       constant_values=255)
+                                                       constant_values=0)
     logging.info(f"image_tiles.shape: {image_tiles.shape}, dtype: {image_tiles.dtype}")
     logging.info(f"Tiled {slide_image.shape} to {image_tiles.shape}")
     foreground_mask, _ = segment_foreground(image_tiles, foreground_threshold)
