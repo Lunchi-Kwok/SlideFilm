@@ -8,7 +8,7 @@ from gigapath.pipeline import TileEncodingDataset, build_paired_transforms, load
 from torch.utils.data import Dataset, DataLoader
 import os
 
-from engines.train_sc import CE_DiceLoss, train_one_epoch, FocalLoss, FocalDiceLoss
+from engines.train_sc import train_one_epoch, BinaryFocalDiceLoss
 from engines.val_sc import val_one_epoch
 
 from data.dataloader_ import SlideTilesDataset
@@ -19,9 +19,9 @@ import math
 
 def main():
     device = "cuda"
-    os.environ["HF_TOKEN"] = "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"
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--HF_TOKEN", type=str, required=True)
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument("--NUM_CLASSES", type=int, required=True)
     parser.add_argument("--slide_dir_train", type=str, required=True)
@@ -30,6 +30,8 @@ def main():
     parser.add_argument("--mask_dir_val", type=str, required=True)
 
     args = parser.parse_args()
+
+    os.environ["HF_TOKEN"] = args.HF_TOKEN
 
     # --- 1) Tile backbone ---
     tile_encoder, slide_encoder = load_tile_slide_encoder(global_pool=True)
@@ -77,8 +79,8 @@ def main():
     scaler = torch.cuda.amp.GradScaler()
     # loss_fn = CE_DiceLoss()     #multi class mask
     # loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
-    loss_fn = FocalDiceLoss(alpha=0.25, gamma=2.0, lambda_dice=1.0)
-
+    # loss_fn = FocalDiceLoss(alpha=0.25, gamma=2.0, lambda_dice=1.0)
+    loss_fn = BinaryFocalDiceLoss(alpha=0.25, gamma=2.0, lambda_dice=1.0)
     best_score = 0
 
     with open("train_log.txt", "w") as f:
@@ -88,26 +90,26 @@ def main():
             tr_loss = train_one_epoch(train_dl, tile_backbone, decoder, optimizer, scaler, loss_fn, slide_encoder,
                                       ratio)
             if (epoch + 1) % 10 == 0:
-                val_stats = val_one_epoch(val_dl, tile_backbone, decoder, loss_fn, slide_encoder, args.NUM_CLASSES)
+                val_stats = val_one_epoch(val_dl, tile_backbone, decoder, loss_fn, slide_encoder)
 
                 log_line = (f"{epoch + 1:03d},{tr_loss:.4f},"
                             f"{val_stats['val_loss']:.4f},"
                             f"{val_stats['mIoU']:.4f},"
-                            f"{val_stats['F1']:.4f},"
+                            f"{val_stats['Dice']:.4f},"
                             f"{val_stats['Acc']:.4f}\n")
                 print(log_line.strip())
                 f.write(log_line)
                 f.flush()
 
-                if val_stats['F1'] > best_score:
-                    best_score = val_stats['F1']
+                if val_stats['Dice'] > best_score:
+                    best_score = val_stats['Dice']
                     torch.save({
                         "epoch": epoch + 1,
                         "model_state_dict": decoder.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
-                        "best_F1": best_score,
+                        "best_Dice": best_score,
                     }, "best_model.pth")
-                    print(f"✅ New best model saved at epoch {epoch + 1}, F1={best_score:.4f}")
+                    print(f"✅ New best model saved at epoch {epoch + 1}, Dice={best_score:.4f}")
 
 
 if __name__ == "__main__":

@@ -4,12 +4,22 @@ from torch.utils.data import DataLoader
 from gigapath.pipeline import run_inference_with_slide_encoder
 
 @torch.no_grad()
-def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, num_classes):
+def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, threshold=0.5):
+    """
+    Validation loop for binary segmentation (1-channel logits + sigmoid).
+    Computes tile-level average Dice / IoU / Accuracy and val_loss.
+    """
     decoder.eval()
-    # slide_encoder.train()
-    # tile_backbone.train()
-    total, loss_sum = 0, 0
-    conf_total = torch.zeros(num_classes, num_classes, dtype=torch.int64, device="cpu")
+    tile_backbone.eval()
+    slide_encoder.eval()
+
+    total_samples = 0
+    loss_sum = 0.0
+    dice_sum = 0.0
+    iou_sum = 0.0
+    acc_sum = 0.0
+
+    eps = 1e-6
 
     for batch_ in Dataloaders:
         tile_loader = DataLoader(batch_, batch_size=8, shuffle=False, num_workers=0)
@@ -18,9 +28,10 @@ def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, n
         with autocast(dtype=torch.float16):
             for batch in tile_loader:
                 out = tile_backbone(batch['img'].cuda())
-                cls_tok = out[0]  
+                cls_tok = out[0]   # [B, D]
                 collated_outputs['tile_embeds'].append(cls_tok.detach().cpu())
                 collated_outputs['coords'].append(batch['coords'])
+
         tile_encoder_outputs = {k: torch.cat(v) for k, v in collated_outputs.items()}
         slide_embeds = run_inference_with_slide_encoder(
             slide_encoder_model=slide_encoder, **tile_encoder_outputs
@@ -28,15 +39,8 @@ def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, n
         slide_vec = slide_embeds["last_layer_embed"].to(next(decoder.parameters()).device)
 
         for tile_batch in tile_loader:
-            imgs  = tile_batch['img'].cuda()
+            imgs  = tile_batch['img'].cuda()   # [B,3,H,W]
             masks = tile_batch['mask'].cuda()
-            
-            # non_empty_idx = (masks.view(masks.size(0), -1).sum(dim=1) > 0)
-            # if not non_empty_idx.any():
-            #     continue 
-
-            # imgs = imgs[non_empty_idx]
-            # masks = masks[non_empty_idx]
 
             out = tile_backbone(imgs)
             if len(out) == 2:
@@ -47,49 +51,65 @@ def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, n
                 skip_layers = getattr(decoder, "skip_layers", [])
                 skip_fmaps = {li: fmap_dict[li] for li in skip_layers if li in fmap_dict}
 
-            
             if slide_vec.dim() == 1:
                 slide_vec_b = slide_vec.unsqueeze(0).expand(imgs.size(0), -1)
             elif slide_vec.size(0) == 1 and imgs.size(0) > 1:
                 slide_vec_b = slide_vec.expand(imgs.size(0), -1)
             else:
-                slide_vec_b = slide_vec  
+                slide_vec_b = slide_vec
 
             with autocast(dtype=torch.float16):
                 logits = decoder(fmap, slide_vec_b, skip_fmaps) if skip_fmaps is not None else decoder(fmap, slide_vec_b)
-            loss = loss_fn(logits.float(), masks)
+                loss = loss_fn(logits.float(), masks)
 
             bs = imgs.size(0)
-            total += bs
+            total_samples += bs
             loss_sum += loss.item() * bs
 
-            preds = logits.argmax(1)
-            conf_total += fast_confmat(preds.cpu(), masks.cpu(), num_classes)
+            probs = torch.sigmoid(logits.float())      # [B,1,H,W]
+            preds = (probs > threshold).float()        # [B,1,H,W]
 
-    metr = metrics_from_confmat(conf_total)
-    metr["val_loss"] = loss_sum / max(total, 1)
+            if masks.dim() == 3:
+                masks_fg = masks.unsqueeze(1).float()  # [B,1,H,W]
+            else:
+                masks_fg = masks.float()               # [B,1,H,W]
+
+            preds_flat = preds.view(bs, -1)
+            masks_flat = masks_fg.view(bs, -1)
+
+            intersection = (preds_flat * masks_flat).sum(dim=1)             # [B]
+            # union = preds_flat.sum(dim=1) + masks_flat.sum(dim=1)          # [B]
+            pred_area = preds_flat.sum(dim=1)  # [B]
+            gt_area = masks_flat.sum(dim=1)
+            dice = (2 * intersection + eps) / (pred_area+ gt_area + eps)                # [B]
+
+            union = pred_area + gt_area - intersection  # [B]
+            iou = torch.zeros_like(intersection, dtype=torch.float)
+
+            non_empty = union > 0
+            iou[non_empty] = intersection[non_empty] / (union[non_empty] + eps)
+
+            iou[~non_empty] = 1.0
+
+            # Accuracy
+            correct = (preds_flat == masks_flat).float().sum(dim=1)        # [B]
+            total_pix = preds_flat.size(1)
+            acc = correct / max(total_pix, 1)                              # [B]
+
+            dice_sum += dice.mean().item() * bs
+            iou_sum  += iou.mean().item() * bs
+            acc_sum  += acc.mean().item() * bs
+
+    metr = {}
+    if total_samples > 0:
+        metr["Dice"] = dice_sum / total_samples
+        metr["mIoU"] = iou_sum / total_samples
+        metr["Acc"]  = acc_sum / total_samples
+        metr["val_loss"] = loss_sum / total_samples
+    else:
+        metr["Dice"] = 0.0
+        metr["mIoU"] = 0.0
+        metr["Acc"]  = 0.0
+        metr["val_loss"] = 0.0
+
     return metr
-
-
-def fast_confmat(pred, target, num_classes):
-    k = (target >= 0) & (target < num_classes)
-    inds = num_classes * target[k].to(torch.int64) + pred[k]
-    conf = torch.bincount(inds, minlength=num_classes**2).reshape(num_classes, num_classes)
-    return conf
-
-
-def metrics_from_confmat(conf):
-    tp = conf.diag()
-    pos_gt = conf.sum(1)
-    pos_pred = conf.sum(0)
-
-    union = pos_gt + pos_pred - tp
-    iou = tp.float() / union.clamp_min(1)
-    f1 = 2 * tp.float() / (pos_gt + pos_pred).clamp_min(1)
-
-    miou = iou.mean().item()
-    mf1 = f1.mean().item()
-    acc = (tp.sum().float() / conf.sum().clamp_min(1)).item()
-
-    return {"mIoU": miou, "F1": mf1, "Acc": acc}
-
