@@ -70,7 +70,7 @@ def main():
     val_dl = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=0, collate_fn=slide_collate)
 
     # --- 6) train ---
-    optimizer = torch.optim.AdamW(list(decoder.parameters()), lr=1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(list(decoder.parameters()), lr=1e-5, weight_decay=1e-4)
     # optimizer = torch.optim.AdamW([
     #     {"params": decoder.parameters(), "lr": 1e-3},
     #     {"params": tile_backbone.parameters(), "lr": 1e-4},
@@ -94,7 +94,7 @@ def main():
 
                 log_line = (f"{epoch + 1:03d},{tr_loss:.4f},"
                             f"{val_stats['val_loss']:.4f},"
-                            f"{val_stats['mIoU']:.4f},"
+                            f"{val_stats['IoU']:.4f},"
                             f"{val_stats['Dice']:.4f},"
                             f"{val_stats['Acc']:.4f}\n")
                 print(log_line.strip())
