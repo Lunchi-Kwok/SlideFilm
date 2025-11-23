@@ -98,18 +98,15 @@ def val_one_epoch(Dataloaders, tile_backbone, decoder, loss_fn, slide_encoder, t
 
             dice_sum += dice.mean().item() * bs
             iou_sum  += iou.mean().item() * bs
-            acc_sum  += acc.mean().item() * bs
 
     metr = {}
     if total_samples > 0:
         metr["Dice"] = dice_sum / total_samples
         metr["IoU"] = iou_sum / total_samples
-        metr["Acc"]  = acc_sum / total_samples
         metr["val_loss"] = loss_sum / total_samples
     else:
         metr["Dice"] = 0.0
         metr["IoU"] = 0.0
-        metr["Acc"]  = 0.0
         metr["val_loss"] = 0.0
 
     return metr

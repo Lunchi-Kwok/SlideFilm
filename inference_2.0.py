@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint")
     parser.add_argument("--val_dir", type=str, required=True, help="Validation slide directory")
     parser.add_argument("--out_root", type=str, default="tiles_masks", help="Output directory for masks")
-    parser.add_argument("--num_classes", type=int, default=2)
+    parser.add_argument("--NUM_CLASSES", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--level", type=int, default=1)

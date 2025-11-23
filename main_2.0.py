@@ -84,7 +84,7 @@ def main():
     best_score = 0
 
     with open("train_log.txt", "w") as f:
-        f.write("Epoch,Train_Loss,Val_Loss,mIoU,F1,Acc\n")
+        f.write("Epoch,Train_Loss,Val_Loss,mIoU,F1\n")
         for epoch in range(args.epochs):
             ratio = bg_ratio_cosine(epoch, args.epochs, start=0.6, end=0.1)
             tr_loss = train_one_epoch(train_dl, tile_backbone, decoder, optimizer, scaler, loss_fn, slide_encoder,
@@ -95,8 +95,7 @@ def main():
                 log_line = (f"{epoch + 1:03d},{tr_loss:.4f},"
                             f"{val_stats['val_loss']:.4f},"
                             f"{val_stats['IoU']:.4f},"
-                            f"{val_stats['Dice']:.4f},"
-                            f"{val_stats['Acc']:.4f}\n")
+                            f"{val_stats['Dice']:.4f},")
                 print(log_line.strip())
                 f.write(log_line)
                 f.flush()

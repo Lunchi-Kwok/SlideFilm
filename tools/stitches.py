@@ -91,19 +91,9 @@ def stitch_tiles(input_path, output_prefix="stitched"):
     rgb.save(out_png, compress_level=6)
     print(f"Saved: {out_png}")
 
-    # optional: generate overlay image
-    overlay = rgb.copy()
-    draw_ov = ImageDraw.Draw(overlay)
-    for x in range(0, orig_w, tile_w):
-        draw_ov.line([(x, 0), (x, orig_h)], fill=(0, 0, 0))
-    for y in range(0, orig_h, tile_h):
-        draw_ov.line([(0, y), (orig_w, y)], fill=(0, 0, 0))
-    overlay.save(f"{output_prefix}_overlay.png", compress_level=6)
-    print(f"Saved overlay: {output_prefix}_overlay.png")
-
 if __name__ == "__main__":
     stitch_tiles(
-        r"E:\prov-gigapath_seg\out\preprocessing\output\mask_plaqueImage13_1200_1200",
+        r"/plaqueImage15_4873_6162",
         output_prefix="stitched_result"
     )
 
