@@ -1,7 +1,12 @@
 import os
 import re
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image, ImageFile
+
+Image.MAX_IMAGE_PIXELS = None
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+import numpy as np
+
 
 def stitch_tiles(input_path, output_prefix="stitched"):
     input_path = Path(input_path)
@@ -30,53 +35,61 @@ def stitch_tiles(input_path, output_prefix="stitched"):
                     w, h = im.size
                 tiles.append({"path": p, "x": x, "y": y, "w": w, "h": h})
 
-    xs = sorted(set(t["x"] for t in tiles))
-    ys = sorted(set(t["y"] for t in tiles))
+    if not tiles:
+        print("No tiles found.")
+        return
 
-    delta_list = [64,128,256,512,1024,2048]
-    d = xs[1] - xs[0]
+    xs = [t["x"] for t in tiles]
+    ys = [t["y"] for t in tiles]
+    min_x = min(xs)
+    min_y = min(ys)
+    max_x = max(t["x"] + t["w"] for t in tiles)
+    max_y = max(t["y"] + t["h"] for t in tiles)
 
-    Sx = min(delta_list, key=lambda x: abs(x - d))
-    Sy = Sx
+    canvas_w = max_x - min_x
+    canvas_h = max_y - min_y
 
-    tile_w = tiles[0]["w"]
-    tile_h = tiles[0]["h"]
+    print(f"Canvas logical range x: [{min_x}, {max_x}), y: [{min_y}, {max_y})")
+    print(f"Canvas size: {canvas_w} x {canvas_h}")
 
-    gx0 = (min(xs) // Sx) * Sx
-    gy0 = (min(ys) // Sy) * Sy
-
-    print("-----------------")
+    prob_acc = np.zeros((canvas_h, canvas_w), dtype=np.float32)
+    weight_acc = np.zeros((canvas_h, canvas_w), dtype=np.float32)
 
     for t in tiles:
-        t["ix"] = (t["x"] - gx0) // Sx
-        t["iy"] = (t["y"] - gy0) // Sy
+        x, y, w, h = t["x"], t["y"], t["w"], t["h"]
+        offset_x = x - min_x
+        offset_y = y - min_y
 
-    max_ix = max(t["ix"] for t in tiles)
-    max_iy = max(t["iy"] for t in tiles)
+        with Image.open(t["path"]) as im:
+            im = im.convert("L")
+            tile_arr = np.array(im, dtype=np.float32) / 255.0
 
-    canvas_w = (max_ix + 1) * tile_w
-    canvas_h = (max_iy + 1) * tile_h
+        x0 = max(0, offset_x)
+        y0 = max(0, offset_y)
+        x1 = min(offset_x + w, canvas_w)
+        y1 = min(offset_y + h, canvas_h)
 
-    canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-    occupied = set()
-    for t in tiles:
-        with Image.open(t["path"]).convert("RGBA") as im:
-            canvas.alpha_composite(im, (t["ix"] * tile_w, t["iy"] * tile_h))
-        occupied.add((t["ix"], t["iy"]))
+        if x1 <= x0 or y1 <= y0:
+            continue
 
-    rgb = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
-    rgb.paste(canvas, mask=canvas.split()[-1])
+        tx0 = x0 - offset_x
+        ty0 = y0 - offset_y
+        tx1 = tx0 + (x1 - x0)
+        ty1 = ty0 + (y1 - y0)
 
-    draw = ImageDraw.Draw(rgb)
-    for iy in range(max_iy + 1):
-        for ix in range(max_ix + 1):
-            if (ix, iy) not in occupied:
-                x0, y0 = ix * tile_w, iy * tile_h
-                x1, y1 = x0 + tile_w, y0 + tile_h
-                draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0))
+        patch = tile_arr[ty0:ty1, tx0:tx1]
 
-    left_crop_px = abs(min(xs))
-    top_crop_px = abs(min(ys))
+        prob_acc[y0:y1, x0:x1] += patch
+        weight_acc[y0:y1, x0:x1] += 1.0
+
+    weight_acc[weight_acc == 0] = 1.0
+    final_prob = prob_acc / weight_acc
+
+    binary_mask = (final_prob >= 0.5).astype(np.uint8) * 255
+    rgb = Image.fromarray(binary_mask, mode="L")
+
+    left_crop_px = abs(min_x) if min_x < 0 else 0
+    top_crop_px = abs(min_y) if min_y < 0 else 0
 
     crop_box = (
         left_crop_px,
@@ -91,9 +104,9 @@ def stitch_tiles(input_path, output_prefix="stitched"):
     rgb.save(out_png, compress_level=6)
     print(f"Saved: {out_png}")
 
+
 if __name__ == "__main__":
     stitch_tiles(
-        r"/plaqueImage15_4873_6162",
+        r"D:\google download\pred_2\Pred\plaqueImage15_4873_6162",
         output_prefix="stitched_result"
     )
-
