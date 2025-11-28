@@ -89,8 +89,8 @@ def stitch_tiles(input_path, output_prefix="stitched"):
     weight_acc[weight_acc == 0] = 1.0
     final_prob = prob_acc / weight_acc
 
-    THRESH = 0.7  #adjust this parameter based on your dataset
-    MIN_SIZE = 5000    #adjust this parameter based on your dataaset
+    THRESH = 0.5  #adjust this parameter based on your dataset
+    MIN_SIZE = 10000    #adjust this parameter based on your dataaset
 
     binary = final_prob >= THRESH
     print("Foreground pixels BEFORE remove_small_objects:",
