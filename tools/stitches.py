@@ -5,7 +5,10 @@ from PIL import Image, ImageFile
 
 Image.MAX_IMAGE_PIXELS = None
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
 import numpy as np
+from skimage.morphology import remove_small_objects
+from skimage.measure import label, regionprops
 
 
 def stitch_tiles(input_path, output_prefix="stitched"):
@@ -82,10 +85,47 @@ def stitch_tiles(input_path, output_prefix="stitched"):
         prob_acc[y0:y1, x0:x1] += patch
         weight_acc[y0:y1, x0:x1] += 1.0
 
+
     weight_acc[weight_acc == 0] = 1.0
     final_prob = prob_acc / weight_acc
 
-    binary_mask = (final_prob >= 0.5).astype(np.uint8) * 255
+    THRESH = 0.7  #adjust this parameter based on your dataset
+    MIN_SIZE = 5000    #adjust this parameter based on your dataaset
+
+    binary = final_prob >= THRESH
+    print("Foreground pixels BEFORE remove_small_objects:",
+          np.count_nonzero(binary))
+
+    lab = label(binary)
+    regions = regionprops(lab)
+    if len(regions) == 0:
+        print("No foreground components found after thresholding.")
+    else:
+        areas = np.array([r.area for r in regions])
+        print("Component areas BEFORE filtering:")
+        print("  count =", len(areas),
+              "min =", areas.min(),
+              "median =", np.median(areas),
+              "max =", areas.max())
+
+    binary = remove_small_objects(binary, min_size=MIN_SIZE)
+
+    print("Foreground pixels AFTER remove_small_objects:",
+          np.count_nonzero(binary))
+
+    lab2 = label(binary)
+    regions2 = regionprops(lab2)
+    if len(regions2) == 0:
+        print("No components remain after filtering.")
+    else:
+        areas2 = np.array([r.area for r in regions2])
+        print("Component areas AFTER filtering:")
+        print("  count =", len(areas2),
+              "min =", areas2.min(),
+              "median =", np.median(areas2),
+              "max =", areas2.max())
+
+    binary_mask = (binary.astype(np.uint8)) * 255
     rgb = Image.fromarray(binary_mask, mode="L")
 
     left_crop_px = abs(min_x) if min_x < 0 else 0
@@ -107,6 +147,6 @@ def stitch_tiles(input_path, output_prefix="stitched"):
 
 if __name__ == "__main__":
     stitch_tiles(
-        r"D:\google download\pred_2\Pred\plaqueImage15_4873_6162",
-        output_prefix="stitched_result"
+        r"/workspace/prov-gigapath_HRSeg/Pred_56NX/12-116_wsi_37614_33606",
+        output_prefix="stitch222"
     )
