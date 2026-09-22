@@ -1,6 +1,6 @@
-# 🧬 Prov-GigaPath_HRSeg
+# 🧬 SlideFilm
 
-Prov-GigaPath_HRSeg is a high-resolution segmentation framework **built upon** [prov-gigapath](https://github.com/prov-gigapath/prov-gigapath/tree/main).  
+SlideFilm is a high-resolution segmentation framework **built upon** [prov-gigapath](https://github.com/prov-gigapath/prov-gigapath/tree/main).  
 It enables efficient whole-slide image (WSI) tiling, model training, fine-tuning, inference, and stitching into full-resolution segmentation outputs.
 
 You can check out the [notebook](https://colab.research.google.com/drive/1CZeEeDWHyMiRb0DMe_UNh7Qlj7Ov194t?usp=sharing) to get started!
