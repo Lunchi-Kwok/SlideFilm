@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
-
 import os
 import argparse
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from models.tile_backbone import TileBackbone
-from models.film_decoder import SegDecoderWithFiLM
+from models.tile_backbone_sc import TileBackbone
+from models.film_decoder_sc import SegDecoderWithFiLM
 from gigapath.pipeline import (
     load_tile_slide_encoder,
     build_paired_transforms,
@@ -15,8 +13,9 @@ from gigapath.pipeline import (
     load_mask_transforms_val,
 )
 from data.dataloader_ import SlideTilesDataset
-from engines.train import train_one_epoch, FocalLoss
-from engines.val import val_one_epoch
+from engines.train_sc import train_one_epoch, BinaryFocalDiceLoss
+from engines.val_sc import val_one_epoch
+import math
 
 
 def main():
@@ -38,7 +37,7 @@ def main():
 
     # --- 1) Load encoders (frozen, same as original) ---
     tile_encoder, slide_encoder = load_tile_slide_encoder(global_pool=True)
-    tile_backbone = TileBackbone(tile_encoder).eval().to(device)
+    tile_backbone = TileBackbone(tile_encoder, layers=[5, 11, 23, 39]).eval().to(device)
     for p in tile_backbone.parameters():
         p.requires_grad = False
 
@@ -47,7 +46,14 @@ def main():
         p.requires_grad = False
 
     # --- 2) Build decoder and load checkpoint ---
-    decoder = SegDecoderWithFiLM(slide_dim=768, in_ch=1536, n_cls=args.NUM_CLASSES).to(device)
+    decoder = SegDecoderWithFiLM(
+        slide_dim=768,
+        in_ch=1536,
+        chs=(768, 384, 192, 96),
+        n_cls=args.NUM_CLASSES,
+        skip_layers=(5, 11, 23, 39),
+        skip_in_ch=1536
+    ).to(device)
     ckpt = torch.load(args.checkpoint, map_location=device)
 
     # If NUM_CLASSES changed compared to pretraining, head shape may differ.
@@ -65,6 +71,10 @@ def main():
     def slide_collate(batch):
         # SlideTilesDataset yields one item per slide; with batch_size=1 we return that item directly
         return batch[0]
+
+    def bg_ratio_cosine(epoch, T, start=0.6, end=0.1):
+        t = min(max(epoch / max(T - 1, 1), 0.0), 1.0)
+        return end + (start - end) * 0.5 * (1 + math.cos(math.pi * t))
 
     paired_transform, img_post, mask_post = build_paired_transforms()
 
@@ -89,22 +99,20 @@ def main():
     # --- 4) Optimizer, AMP scaler, and loss (FocalLoss only) ---
     optimizer = torch.optim.AdamW(list(decoder.parameters()), lr=1e-3, weight_decay=1e-4)
     scaler = torch.cuda.amp.GradScaler()
-    loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
+    loss_fn = BinaryFocalDiceLoss(alpha=0.25, gamma=2.0, lambda_dice=1.0)
 
     # --- 5) Finetune loop (validate every 10 epochs; save best by F1) ---
     best_score = ckpt.get("best_F1", 0.0) if isinstance(ckpt, dict) else 0.0
 
-    for epoch in range(args.epochs + 1):
+    for epoch in range(args.epochs):
+        ratio = bg_ratio_cosine(epoch, args.epochs, start=0.6, end=0.1)
         # Train one epoch (engine follows your original signature)
-        tr_loss = train_one_epoch(
-            train_dl, tile_backbone, decoder, optimizer, scaler, loss_fn, slide_encoder
-        )
+        tr_loss = train_one_epoch(train_dl, tile_backbone, decoder, optimizer, scaler, loss_fn, slide_encoder,
+                                  ratio)
 
         # Validate every 10 epochs (same cadence as your training code)
         if (epoch + 1) % 10 == 0:
-            val_stats = val_one_epoch(
-                val_dl, tile_backbone, decoder, loss_fn, slide_encoder, args.NUM_CLASSES
-            )
+            val_stats = val_one_epoch(val_dl, tile_backbone, decoder, loss_fn, slide_encoder)
             print(
                 f"[Epoch {epoch + 1:03d}] "
                 f"train_loss={tr_loss:.4f} | "
@@ -115,8 +123,8 @@ def main():
             )
 
             # Save best model by F1 (same logic)
-            if val_stats["F1"] > best_score:
-                best_score = val_stats["F1"]
+            if val_stats["Dice"] > best_score:
+                best_score = val_stats["Dice"]
                 torch.save(
                     {
                         "epoch": epoch + 1,
@@ -126,7 +134,7 @@ def main():
                     },
                     "best_model_finetuned.pth",
                 )
-                print(f"✅ New best model saved at epoch {epoch + 1}, F1={best_score:.4f}")
+                print(f"✅ New best model saved at epoch {epoch + 1}, Dice={best_score:.4f}")
 
         else:
             print(f"[Epoch {epoch + 1:03d}] train_loss={tr_loss:.4f}")

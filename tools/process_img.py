@@ -79,9 +79,9 @@ def process_folder(
 
 if __name__ == "__main__":
     process_folder(
-        input_dir=r"D:\google download\aerial\root\WSI\Val\Images",
-        output_dir=r"D:\google download\aerial\root\WSI\Val\img",
-        base_mpp=0.27,
+        input_dir=r"D:\google download\NEP25",
+        output_dir=r"D:\google download\NEP25_py",
+        base_mpp=0.2525,
         tile=256,
         jpeg_quality=90,
         overwrite=False

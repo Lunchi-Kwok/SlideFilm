@@ -148,5 +148,5 @@ def stitch_tiles(input_path, output_prefix="stitched"):
 if __name__ == "__main__":
     stitch_tiles(
         r"/workspace/prov-gigapath_HRSeg/Pred_56NX/12-116_wsi_37614_33606",
-        output_prefix="stitch222"
+        output_prefix="stitch"
     )
